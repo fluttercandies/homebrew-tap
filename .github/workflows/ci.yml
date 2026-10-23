@@ -25,4 +25,7 @@ jobs:
     permissions:
       contents: read
     steps:
+      # 前两步是 test-bot 在容器内的环境准备（创建工作区 HOME 目录等），官方模板同序
+      - run: brew test-bot --only-cleanup-before
+      - run: brew test-bot --only-setup
       - run: brew test-bot --only-tap-syntax
