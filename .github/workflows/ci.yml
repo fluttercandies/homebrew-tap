@@ -25,7 +25,13 @@ jobs:
     permissions:
       contents: read
     steps:
-      # 前两步是 test-bot 在容器内的环境准备（创建工作区 HOME 目录等），官方模板同序
+      - name: Set up Homebrew
+        id: set-up-homebrew
+        uses: Homebrew/actions/setup-homebrew@e99025eb970cfa124b8284a35463d87426917478 # 2026.09.28.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # 官方模板同序：环境准备（含工作区 HOME 目录）后再做语法检查
       - run: brew test-bot --only-cleanup-before
       - run: brew test-bot --only-setup
       - run: brew test-bot --only-tap-syntax
