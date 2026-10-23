@@ -1,0 +1,28 @@
+# 基础检查：校验 Tap 内所有 Ruby 文件的语法与命名规范（brew test-bot --only-tap-syntax）。
+# 不依赖任何具体软件，空 Tap 也能独立运行；接入 Formula 后无需改动即可继续生效。
+# 未来如需 bottle 构建与发布流水线，可参考 `brew tap-new` 生成的官方模板扩展。
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash -xeuo pipefail {0}
+
+jobs:
+  tap-syntax:
+    name: Tap syntax check
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/homebrew/brew:main
+      options: --privileged
+    permissions:
+      contents: read
+    steps:
+      - run: brew test-bot --only-tap-syntax
