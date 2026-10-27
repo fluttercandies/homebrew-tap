@@ -4,7 +4,7 @@
 
 Organization-wide Homebrew tap for [FlutterCandies](https://github.com/fluttercandies) CLI and developer tools, providing a single Homebrew distribution entry point for tools published by the organization.
 
-**Current status**: this repository contains infrastructure only (structure, basic checks, onboarding docs); no formulae have been published yet. Install commands become usable once the first formula lands.
+**Current status**: infrastructure plus one formula — [`lon`](https://github.com/fluttercandies/lon) (compact, canonical, lossless JSON codec). Install with `brew install fluttercandies/tap/lon`.
 
 ## Scope
 

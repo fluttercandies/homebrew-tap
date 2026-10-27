@@ -4,7 +4,7 @@
 
 [FlutterCandies](https://github.com/fluttercandies) 组织级 Homebrew Tap，为组织内对外发布的 CLI 工具与开发者工具提供统一的 Homebrew 分发入口。
 
-**当前状态**：本仓库只包含基础设施（结构、基础检查、接入文档），尚未收录任何 Formula。第一个软件接入后，安装命令才会真正可用。
+**当前状态**：基础设施已就绪，并已收录第一个 Formula —— [`lon`](https://github.com/fluttercandies/lon)（紧凑、规范、无损的 JSON 编解码 CLI）。安装：`brew install fluttercandies/tap/lon`。
 
 ## 用途与维护范围
 
