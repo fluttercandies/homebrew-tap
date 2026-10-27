@@ -1,0 +1,136 @@
+# 自动更新 Formula：定时（或手动）检查上游 lon 仓库最新的 rust-v* Release，
+# 若版本高于 Formula 当前版本，则下载四平台资产、计算 sha256、从模板重新生成
+# Formula/lon.rb，过 brew style 后自动提交推送。lon 侧发版只需推送 rust-v* tag，
+# Release 工作流构建完资产后，本工作流会在下一轮检查时自动跟进。
+name: Bump
+
+on:
+  schedule:
+    - cron: '23 */6 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: bump
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: Bump lon formula
+    runs-on: ubuntu-latest
+    if: github.repository == 'fluttercandies/homebrew-tap'
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    container:
+      image: ghcr.io/homebrew/brew:main
+
+    steps:
+      - name: Check out tap
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Homebrew
+        id: set-up-homebrew
+        uses: Homebrew/actions/setup-homebrew@e99025eb970cfa124b8284a35463d87426917478 # 2026.09.28.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Detect and apply version bump
+        env:
+          UPSTREAM: fluttercandies/lon
+        run: |
+          set -euo pipefail
+
+          latest_tag=$(curl -fsSL "https://api.github.com/repos/${UPSTREAM}/releases?per_page=30" \
+            | ruby -rjson -e 'puts JSON.parse(STDIN.read).map { |r| r["tag_name"] }.find { |t| t.start_with?("rust-v") } || ""')
+          if [ -z "$latest_tag" ]; then
+            echo "No rust-v* release found upstream; nothing to do."
+            exit 0
+          fi
+
+          current_tag=$(grep -o 'rust-v[0-9][0-9.]*' Formula/lon.rb | head -1)
+          if [ "$latest_tag" = "$current_tag" ]; then
+            echo "Formula already at ${current_tag}; nothing to do."
+            exit 0
+          fi
+
+          version=${latest_tag#rust-v}
+          base="https://github.com/${UPSTREAM}/releases/download/${latest_tag}"
+          workdir="$(mktemp -d)"
+          targets="aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl aarch64-unknown-linux-musl"
+
+          for target in $targets; do
+            asset="lon-${version}-${target}.tar.gz"
+            echo "Fetching ${asset}..."
+            if ! curl -fsSL -o "${workdir}/${asset}" "${base}/${asset}"; then
+              echo "Release assets for ${latest_tag} are incomplete; skipping this round."
+              exit 0
+            fi
+          done
+
+          sha() { sha256sum "$1" | cut -d' ' -f1; }
+          arm_mac=$(sha "${workdir}/lon-${version}-aarch64-apple-darwin.tar.gz")
+          intel_mac=$(sha "${workdir}/lon-${version}-x86_64-apple-darwin.tar.gz")
+          intel_linux=$(sha "${workdir}/lon-${version}-x86_64-unknown-linux-musl.tar.gz")
+          arm_linux=$(sha "${workdir}/lon-${version}-aarch64-unknown-linux-musl.tar.gz")
+
+          cat > Formula/lon.rb <<EOF
+          class Lon < Formula
+            desc "Compact, canonical, lossless JSON codec for AI-first data exchange"
+            homepage "https://github.com/fluttercandies/lon"
+            url "${base}/lon-${version}-aarch64-apple-darwin.tar.gz"
+            license "BSD-3-Clause"
+
+            livecheck do
+              url "https://github.com/fluttercandies/lon/releases/latest"
+              regex(/^rust-v?(\\d+(?:\\.\\d+)+)\$/i)
+            end
+
+            on_macos do
+              on_arm do
+                url "${base}/lon-${version}-aarch64-apple-darwin.tar.gz"
+                sha256 "${arm_mac}"
+              end
+
+              on_intel do
+                url "${base}/lon-${version}-x86_64-apple-darwin.tar.gz"
+                sha256 "${intel_mac}"
+              end
+            end
+
+            on_linux do
+              on_arm do
+                url "${base}/lon-${version}-aarch64-unknown-linux-musl.tar.gz"
+                sha256 "${arm_linux}"
+              end
+
+              on_intel do
+                url "${base}/lon-${version}-x86_64-unknown-linux-musl.tar.gz"
+                sha256 "${intel_linux}"
+              end
+            end
+
+            def install
+              bin.install "lon"
+            end
+
+            test do
+              assert_equal "{name:Ada active:true}",
+                pipe_output("#{bin}/lon encode", '{"name":"Ada","active":true}').strip
+            end
+          end
+          EOF
+
+          if ! brew style Formula/lon.rb; then
+            echo "Generated formula failed brew style; aborting without committing."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/lon.rb
+          git commit -m "chore: bump lon to ${version}"
+          git push
+          echo "Bumped lon to ${version}."
