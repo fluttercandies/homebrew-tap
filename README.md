@@ -36,13 +36,35 @@ brew install <formula-name>
 
 ```text
 homebrew-tap/
-├── Formula/                  # all formulae (currently empty)
+├── Formula/                  # all formulae
+├── scripts/
+│   └── bump-formula.rb       # generic auto-bump script (see Automated bumps)
 ├── .github/
 │   ├── workflows/
-│   │   └── ci.yml            # basic check: tap syntax & naming conventions
+│   │   ├── ci.yml            # basic check: tap syntax & naming conventions
+│   │   └── bump.yml          # scheduled auto-bump runs
 │   └── dependabot.yml        # keeps GitHub Actions used by CI up to date
 └── README.md                 # this document: conventions & onboarding
 ```
+
+## Automated bumps
+
+[`scripts/bump-formula.rb`](scripts/bump-formula.rb), run every six hours by the
+[Bump workflow](.github/workflows/bump.yml) (also manually via `workflow_dispatch`),
+keeps formulae in sync with upstream releases. A formula is picked up
+automatically when its `url` lines point at GitHub Release assets whose **tag
+and filename both embed the release version** — for example
+`.../releases/download/rust-v0.1.0/lon-0.1.0-aarch64-apple-darwin.tar.gz`.
+The script finds the newest upstream tag with the same prefix, downloads every
+referenced asset, rewrites URLs and the `sha256` following each of them, gates
+the result with `brew style`, and commits `chore: bump <name> to <version>`.
+Formulas that do not follow the convention, and releases with incomplete
+assets, are skipped with a note.
+
+**Adding a new tool therefore requires only a hand-written formula following
+the convention above** — no workflow or script changes needed. To publish a
+new version later, the tool just needs to attach versioned release assets to
+its GitHub Release; the tap follows automatically.
 
 ## Formula conventions
 

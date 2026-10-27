@@ -36,13 +36,32 @@ brew install <formula-name>
 
 ```text
 homebrew-tap/
-├── Formula/                  # 所有软件的 Formula（当前为空）
+├── Formula/                  # 全部 Formula
+├── scripts/
+│   └── bump-formula.rb       # 通用自动升级脚本（见“自动升级”）
 ├── .github/
 │   ├── workflows/
-│   │   └── ci.yml            # 基础检查：tap 语法与命名规范
-│   └── dependabot.yml        # 保持 CI 使用的 GitHub Actions 更新
-└── README.md                 # 本文档：规范与接入流程
+│   │   ├── ci.yml            # 基础检查：Tap 语法与命名规范
+│   │   └── bump.yml          # 定时自动升级
+│   └── dependabot.yml        # 保持 CI 使用的 GitHub Actions 为最新
+└── README.md                 # 本文档：约定与接入指南
 ```
+
+## 自动升级
+
+[`scripts/bump-formula.rb`](scripts/bump-formula.rb) 由
+[Bump 工作流](.github/workflows/bump.yml)每 6 小时运行一次（也可 `workflow_dispatch`
+手动触发），负责让 Formula 跟随上游发版。约定：formula 的 `url` 指向 GitHub
+Release 资产，且 **tag 与资产文件名都内嵌版本号**，例如
+`.../releases/download/rust-v0.1.0/lon-0.1.0-aarch64-apple-darwin.tar.gz`。
+脚本会查找同前缀的最新 tag、下载全部被引用的资产、重写 URL 及每个 URL
+之后的 `sha256`、过 `brew style` 门禁，然后提交
+`chore: bump <name> to <version>`。不符合约定的 formula 与资产不齐的新版本
+会被跳过并给出说明。
+
+**因此新增一个工具只需要按上述约定手写一个 Formula**，无需改动任何工作流
+或脚本。后续发新版本时，工具只需在其 GitHub Release 挂上带版本号的资产，
+tap 会自动跟进。
 
 ## Formula 规范
 
