@@ -24,10 +24,6 @@ jobs:
     permissions:
       contents: write
 
-    container:
-      image: ghcr.io/homebrew/brew:main
-      options: --privileged
-
     steps:
       - name: Check out tap
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

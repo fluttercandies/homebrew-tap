@@ -1,4 +1,5 @@
 #!/usr/bin/env ruby
+# typed: strict
 # frozen_string_literal: true
 
 # Generic formula bumper for this tap.
@@ -26,143 +27,148 @@ require "json"
 require "open-uri"
 require "tmpdir"
 
-REPO_ROOT = File.expand_path("..", __dir__)
-GITHUB_TOKEN = ENV.fetch("GITHUB_TOKEN", "")
+# Keeps every convention-following formula in this tap in sync with its
+# upstream GitHub releases. See the header comment for the convention.
+module TapBump
+  REPO_ROOT = File.expand_path("..", __dir__).freeze
+  GITHUB_TOKEN = ENV.fetch("GITHUB_TOKEN", "").freeze
 
-def github_json(url)
-  headers = { "User-Agent" => "fluttercandies-tap-bump" }
-  headers["Authorization"] = "token #{GITHUB_TOKEN}" unless GITHUB_TOKEN.empty?
-  URI.parse(url).open(headers).read.then { |body| JSON.parse(body) }
-rescue StandardError => e
-  warn "  ! GitHub request failed (#{url}): #{e.message}"
-  nil
-end
-
-def download(url, dest)
-  headers = { "User-Agent" => "fluttercandies-tap-bump" }
-  headers["Authorization"] = "token #{GITHUB_TOKEN}" unless GITHUB_TOKEN.empty?
-  IO.binwrite(dest, URI.parse(url).open(headers).read)
-  true
-rescue StandardError
-  false
-end
-
-# Newest release tag sharing the formula's tag prefix, or nil.
-def latest_tag(repo, prefix)
-  releases = github_json("https://api.github.com/repos/#{repo}/releases?per_page=30")
-  return nil unless releases.is_a?(Array)
-
-  pattern = /\A#{Regexp.escape(prefix)}(\d+(?:\.\d+)+)\z/
-  releases.filter_map { |r| r["tag_name"] }.find { |t| t.match?(pattern) }
-end
-
-def bump_formula(path)
-  name = File.basename(path, ".rb")
-  text = File.read(path)
-
-  urls = text.scan(%r{https://github\.com/([\w.-]+/[\w.-]+)/releases/download/([^/"\s]+)/([^/"\s]+)})
-             .map { |repo, tag, asset| { repo:, tag:, asset: } }
-  if urls.empty?
-    puts "#{name}: no GitHub Release asset URLs; skipped (not auto-bumpable)."
-    return nil
+  def self.github_json(url)
+    headers = { "User-Agent" => "fluttercandies-tap-bump" }
+    headers["Authorization"] = "token #{GITHUB_TOKEN}" unless GITHUB_TOKEN.empty?
+    URI.parse(url).open(headers).read.then { |body| JSON.parse(body) }
+  rescue => e
+    warn "  ! GitHub request failed (#{url}): #{e.message}"
+    nil
   end
 
-  repos = urls.map { |u| u[:repo] }.uniq
-  tags = urls.map { |u| u[:tag] }.uniq
-  if repos.size != 1 || tags.size != 1
-    puts "#{name}: multiple repos or tags in URLs; skipped."
-    return nil
+  def self.download(url, dest)
+    headers = { "User-Agent" => "fluttercandies-tap-bump" }
+    headers["Authorization"] = "token #{GITHUB_TOKEN}" unless GITHUB_TOKEN.empty?
+    File.binwrite(dest, URI.parse(url).open(headers).read)
+    true
+  rescue
+    false
   end
 
-  repo = repos.first
-  tag = tags.first
-  match = tag.match(/\A(.*?)(\d+(?:\.\d+)+)\z/)
-  unless match
-    puts "#{name}: tag #{tag} has no version suffix; skipped."
-    return nil
-  end
-  prefix = match[1]
-  version = match[2]
+  # Newest release tag sharing the formula's tag prefix, or nil.
+  def self.latest_tag(repo, prefix)
+    releases = github_json("https://api.github.com/repos/#{repo}/releases?per_page=30")
+    return unless releases.is_a?(Array)
 
-  unless urls.all? { |u| u[:asset].include?(version) }
-    puts "#{name}: asset filenames do not embed #{version}; skipped."
-    return nil
+    pattern = /\A#{Regexp.escape(prefix)}(\d+(?:\.\d+)+)\z/
+    releases.filter_map { |r| r["tag_name"] }.find { |t| t.match?(pattern) }
   end
 
-  fresh = latest_tag(repo, prefix)
-  if fresh.nil?
-    puts "#{name}: no #{prefix}* release found upstream; skipped."
-    return nil
-  end
-  if fresh == tag
-    puts "#{name}: already at #{tag}; up to date."
-    return nil
-  end
-  new_version = fresh.delete_prefix(prefix)
+  def self.bump_formula(path)
+    name = File.basename(path, ".rb")
+    text = File.read(path)
 
-  Dir.mktmpdir("tap-bump") do |dir|
-    base = "https://github.com/#{repo}/releases/download/#{fresh}"
-    asset_hash = {}
-    asset_map = {}
-    urls.map { |u| u[:asset] }.uniq.each do |asset|
-      new_asset = asset.gsub(version, new_version)
-      dest = File.join(dir, new_asset)
-      unless download("#{base}/#{new_asset}", dest)
-        puts "#{name}: release #{fresh} is missing #{new_asset}; skipped this round."
-        return nil
-      end
-      asset_hash[new_asset] = Digest::SHA256.file(dest).hexdigest
-      asset_map[asset] = new_asset
+    urls = text.scan(%r{https://github\.com/([\w.-]+/[\w.-]+)/releases/download/([^/"\s]+)/([^/"\s]+)})
+               .map { |repo, tag, asset| { repo:, tag:, asset: } }
+    if urls.empty?
+      puts "#{name}: no GitHub Release asset URLs; skipped (not auto-bumpable)."
+      return
     end
 
-    updated = text.gsub("releases/download/#{tag}/", "releases/download/#{fresh}/")
-    asset_map.each { |old_asset, new_asset| updated = updated.gsub(old_asset, new_asset) }
-    lines = updated.lines
-    lines.each_with_index do |line, i|
-      next unless line.include?("url \"") && line.include?(base)
+    repos = urls.map { |u| u[:repo] }.uniq
+    tags = urls.map { |u| u[:tag] }.uniq
+    if repos.size != 1 || tags.size != 1
+      puts "#{name}: multiple repos or tags in URLs; skipped."
+      return
+    end
 
-      asset = line[/url "([^"]+)"/, 1].split("/").last
-      hash = asset_hash[asset] or next
-      ((i + 1)...[i + 4, lines.size].min).each do |j|
-        if lines[j] =~ /sha256 "[0-9a-f]{64}"/
-          lines[j] = lines[j].sub(/"[0-9a-f]{64}"/, "\"#{hash}\"")
-          break
+    repo = repos.first
+    tag = tags.first
+    match = tag.match(/\A(.*?)(\d+(?:\.\d+)+)\z/)
+    unless match
+      puts "#{name}: tag #{tag} has no version suffix; skipped."
+      return
+    end
+    prefix = match[1]
+    version = match[2]
+
+    unless urls.all? { |u| u[:asset].include?(version) }
+      puts "#{name}: asset filenames do not embed #{version}; skipped."
+      return
+    end
+
+    fresh = latest_tag(repo, prefix)
+    if fresh.nil?
+      puts "#{name}: no #{prefix}* release found upstream; skipped."
+      return
+    end
+    if fresh == tag
+      puts "#{name}: already at #{tag}; up to date."
+      return
+    end
+    new_version = fresh.delete_prefix(prefix)
+
+    Dir.mktmpdir("tap-bump") do |dir|
+      base = "https://github.com/#{repo}/releases/download/#{fresh}"
+      asset_hash = {}
+      asset_map = {}
+      urls.map { |u| u[:asset] }.uniq.each do |asset|
+        new_asset = asset.gsub(version, new_version)
+        dest = File.join(dir, new_asset)
+        unless download("#{base}/#{new_asset}", dest)
+          puts "#{name}: release #{fresh} is missing #{new_asset}; skipped this round."
+          return nil
+        end
+        asset_hash[new_asset] = Digest::SHA256.file(dest).hexdigest
+        asset_map[asset] = new_asset
+      end
+
+      updated = text.gsub("releases/download/#{tag}/", "releases/download/#{fresh}/")
+      asset_map.each { |old_asset, new_asset| updated = updated.gsub(old_asset, new_asset) }
+      lines = updated.lines
+      lines.each_with_index do |line, i|
+        url_line = line.include?("url \"") && line.include?(base)
+        next unless url_line
+
+        asset = line[/url "([^"]+)"/, 1].split("/").last
+        (hash = asset_hash[asset]) || next
+        ((i + 1)...[i + 4, lines.size].min).each do |j|
+          if /sha256 "[0-9a-f]{64}"/.match?(lines[j])
+            lines[j] = lines[j].sub(/"[0-9a-f]{64}"/, "\"#{hash}\"")
+            break
+          end
         end
       end
-    end
-    updated = lines.join
+      updated = lines.join
 
-    File.write(path, updated)
-    unless system("brew", "style", path, out: File::NULL, err: File::NULL)
-      File.write(path, text)
-      puts "#{name}: generated update failed brew style; reverted and skipped."
-      return nil
+      File.write(path, updated)
+      unless system("brew", "style", path, out: File::NULL, err: File::NULL)
+        File.write(path, text)
+        puts "#{name}: generated update failed brew style; reverted and skipped."
+        return nil
+      end
     end
+
+    { name:, from: tag, to: fresh, version: new_version }
   end
 
-  { name:, from: tag, to: fresh, version: new_version }
+  def self.main
+    wanted = ARGV.map { |a| a.end_with?(".rb") ? File.basename(a, ".rb") : a }
+    formulae = Dir[File.join(REPO_ROOT, "Formula", "*.rb")]
+    formulae = formulae.select { |f| wanted.include?(File.basename(f, ".rb")) } unless wanted.empty?
+
+    bumps = formulae.filter_map { |path| bump_formula(path) }
+    if bumps.empty?
+      puts "Nothing to bump."
+      return
+    end
+
+    system("git", "-C", REPO_ROOT, "config", "user.name", "github-actions[bot]")
+    system("git", "-C", REPO_ROOT, "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com")
+    bumps.each do |bump|
+      path = File.join(REPO_ROOT, "Formula", "#{bump[:name]}.rb")
+      system("git", "-C", REPO_ROOT, "add", path)
+      system("git", "-C", REPO_ROOT, "commit", "-m", "chore: bump #{bump[:name]} to #{bump[:version]}")
+    end
+    system("git", "-C", REPO_ROOT, "push")
+    bumps.each { |b| puts "Bumped #{b[:name]}: #{b[:from]} -> #{b[:to]}." }
+  end
 end
 
-def main
-  wanted = ARGV.map { |a| a.end_with?(".rb") ? File.basename(a, ".rb") : a }
-  formulae = Dir[File.join(REPO_ROOT, "Formula", "*.rb")].sort
-  formulae = formulae.select { |f| wanted.include?(File.basename(f, ".rb")) } unless wanted.empty?
-
-  bumps = formulae.filter_map { |path| bump_formula(path) }
-  if bumps.empty?
-    puts "Nothing to bump."
-    return
-  end
-
-  system("git", "-C", REPO_ROOT, "config", "user.name", "github-actions[bot]")
-  system("git", "-C", REPO_ROOT, "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com")
-  bumps.each do |bump|
-    path = File.join(REPO_ROOT, "Formula", "#{bump[:name]}.rb")
-    system("git", "-C", REPO_ROOT, "add", path)
-    system("git", "-C", REPO_ROOT, "commit", "-m", "chore: bump #{bump[:name]} to #{bump[:version]}")
-  end
-  system("git", "-C", REPO_ROOT, "push")
-  bumps.each { |b| puts "Bumped #{b[:name]}: #{b[:from]} -> #{b[:to]}." }
-end
-
-main
+TapBump.main
