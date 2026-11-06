@@ -163,10 +163,17 @@ module TapBump
     system("git", "-C", REPO_ROOT, "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com")
     bumps.each do |bump|
       path = File.join(REPO_ROOT, "Formula", "#{bump[:name]}.rb")
-      system("git", "-C", REPO_ROOT, "add", path)
-      system("git", "-C", REPO_ROOT, "commit", "-m", "chore: bump #{bump[:name]} to #{bump[:version]}")
+      ok = system("git", "-C", REPO_ROOT, "add", path) &&
+           system("git", "-C", REPO_ROOT, "commit", "-m", "chore: bump #{bump[:name]} to #{bump[:version]}")
+      abort "bump: git add/commit failed for #{bump[:name]}" unless ok
     end
-    system("git", "-C", REPO_ROOT, "push")
+    # actions/checkout leaves the branch without upstream tracking, so a bare
+    # `git push` fails with "no upstream branch"; name the ref explicitly, and
+    # let a failed push turn the run red instead of reporting a bump that never
+    # left the runner.
+    unless system("git", "-C", REPO_ROOT, "push", "origin", "HEAD:main")
+      abort "bump: git push failed; the rewritten formulae were not published"
+    end
     bumps.each { |b| puts "Bumped #{b[:name]}: #{b[:from]} -> #{b[:to]}." }
   end
 end
