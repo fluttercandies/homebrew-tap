@@ -11,23 +11,23 @@ class Dartq < Formula
 
   on_macos do
     on_arm do
-      url "https://github.com/fluttercandies/dartq/releases/download/v0.1.18/dartq-0.1.18-macos-arm64.tar.gz"
-      sha256 "209dde6c8b792daa8f3972c5a7bc7d63822f2067c3ae02162790f2ad56445b40"
+      url "https://github.com/fluttercandies/dartq/releases/download/v0.1.19/dartq-0.1.19-macos-arm64.tar.gz"
+      sha256 "157e4c5759400800a6c438bfd21ed7e9855b54a29bdf641dc0e7cf2c786fe757"
     end
     on_intel do
-      url "https://github.com/fluttercandies/dartq/releases/download/v0.1.18/dartq-0.1.18-macos-x86_64.tar.gz"
-      sha256 "9cfe60c884c7cb002c378339041fefc450d50d200f6485dad3c8a548c826461b"
+      url "https://github.com/fluttercandies/dartq/releases/download/v0.1.19/dartq-0.1.19-macos-x86_64.tar.gz"
+      sha256 "e0f1d6d43136119196bf2964c976a365f2f9aa43c0ee86e7039bdf8ccff5f451"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/fluttercandies/dartq/releases/download/v0.1.18/dartq-0.1.18-linux-arm64.tar.gz"
-      sha256 "bc4b3855bd3d778e0c66f8e335224282ff69b5a8239f46987453bd3c08a367d3"
+      url "https://github.com/fluttercandies/dartq/releases/download/v0.1.19/dartq-0.1.19-linux-arm64.tar.gz"
+      sha256 "43db06fd69faf8afaabb2a782ee5f97e9e6857b4c97e0fc196b339b22f381f6a"
     end
     on_intel do
-      url "https://github.com/fluttercandies/dartq/releases/download/v0.1.18/dartq-0.1.18-linux-x86_64.tar.gz"
-      sha256 "32cc62954d606b6dc75ad4ffee60ade7f643ee199e439b7f1edc81fbc063693c"
+      url "https://github.com/fluttercandies/dartq/releases/download/v0.1.19/dartq-0.1.19-linux-x86_64.tar.gz"
+      sha256 "606ae1563b969b79544de2e3149af7db57f5eed0b610ef446031e4590866bf00"
     end
   end
 
